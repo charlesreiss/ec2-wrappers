@@ -22,18 +22,21 @@ scripts for launching clusters on EC2, which are now deprecated in favor Apache
 Whirr, which we have not adopted.
 
 Most of the work in thie stuff labelled ec2-wrappers. These have three parts:
+
 - Tools for managing IAM (aws.amazon.com/iam) identities for student accounts.
   These include creating various configuration files (containing credentials for
   the "identity" ~~ subaccount) in student home directories. 
+
 - Tools for launching instances. We don't allow IAM identities to launch
   instances directly. As of this writing, IAM only allows us to set permissions
   to enable/disable instance launching entirely for an identity; we cannot set
   limits on how many instances an identity can launch. We set limits on
   instances that can be launched by controlling the user account. These scripts
   DO NOT attempt to stop instances that are left running for an excessive period
-  of time, which is the MOST COMMON CAUSE OF EXCESSIVE SPENDING. For
+  of time, which is the *most common cause of excessive spending*. For
   accountability, each instance is marked with an SSH key named after the
   student account in question.
+
 - Tools for accounting usage. In addition to keeping an audit log, a cronjob is
   included to query instance usage. Instance visiblity is logged into a database
   and a tool is provided for querying historical usage. Note that these scripts
@@ -64,17 +67,16 @@ Files included in ec2-wrappers:
   - this code contains logic for launching instances of behalf of students
   (run_instances() method). This is called by ec2_runner.py
 
--       ec2_util.py
-		frontend program for interfacing subaccounts.py for students to create
+- ec2_util.py
+  frontend program for interfacing subaccounts.py for students to create
   identities and rotate credentials for those identities.
 
--       ec2_runner.py
-		wrapper which hadoop-ec2 was modified to use to launch instances.
+- ec2_runner.py
+  wrapper which hadoop-ec2 was modified to use to launch instances.
   Primarily intended to take an instance description in JSON from stdin
   and launch it. Run through a setuid trap.
 
--       usage_cron.py (cron entrypoint), usage_report.py (command-line
-entrypoint), record_usage.py (library)
+- usage_cron.py (cron entrypoint), usage_report.py (command-line entrypoint), record_usage.py (library)
       take snapshots of active instances in an SQLite database and report on
   the estimated spend (only from instance hours running). Note that this
   does not behave well if it misses an instance termination (it will
@@ -87,6 +89,9 @@ entrypoint), record_usage.py (library)
   (e.g. by opening /dev/null three times) before calling the executable
   for extra paranoia.
 
-microproxy:
+
+Other directories:
+
+- microproxy:
     Lightweight HTTP reverse proxy for use on instances to allow use of
     non-global addresses..
