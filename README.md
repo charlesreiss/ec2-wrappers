@@ -46,6 +46,9 @@ Most of the work in thie stuff labelled ec2-wrappers. These have three parts:
 
 Files included in ec2-wrappers:
 
+- cs61cpaths.py
+  Configuration file for locations of things, including the root access key.
+
 -	boto*
 		copies of Boto (boto.cloudhackers.com), a Python library for
   interfacing with cloud providers that you probably want to use
