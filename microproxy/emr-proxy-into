@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+use warnings;
+use strict;
+
+use FindBin '$Bin';
+use POSIX ':sys_wait_h';
+
+my $socks_port = int(50000 + rand 15000);
+my $proxy_port = int(50000 + rand 15000);
+
+sub check_kid {
+    my ($what, $pid) = @_;
+    sleep 2;
+    my $kid = waitpid($pid, WNOHANG);
+    die "$what fialed (status = $?)\n" unless $kid == 0;
+}
+
+my ($hostname, $keypair) = @ARGV;
+
+die "emr-proxy-into HOSTNAME KEYPAIR-FILE" unless -f $keypair;
+
+$| = 1;
+print "Starting SSH tunnel (local port $socks_port)...";
+
+my $hadoop_user = $ENV{EMR_HADOOP_USER} || "hadoop";
+
+my $ssh_pid = fork;
+die "fork ssh: $!\n" unless defined $ssh_pid;
+if (!$ssh_pid) {
+    exec 
+        'ssh', '-o', 'StrictHostKeyChecking=no', '-i', $keypair,
+        '-D', "localhost:$socks_port", '-N',
+        "$hadoop_user\@$hostname";
+    die "exec ssh: $!\n";
+}
+
+sleep 3;
+
+check_kid("SSH", $ssh_pid);
+
+print "done\n";
+
+print "Starting local HTTP proxy (local port $proxy_port)...";
+
+my $proxy_pid = fork;
+die "fork proxy: $!\n" unless defined $proxy_pid;
+if (!$proxy_pid) {
+    exec $^X, "$Bin/simpleproxy.perl", $socks_port, $proxy_port,
+        'http://localhost:50030';
+    die "exec proxy: $!\n";
+}
+
+check_kid("proxy", $proxy_pid);
+
+print "done\n";
+
+print "\n\n";
+print "Hadoop MapReduce master: http://localhost:$proxy_port/localhost/50030/\n";
+print "Hadoop HDFS master:      http://localhost:$proxy_port/localhost/50070/\n";
+
+sleep;
+
+END {
+    kill TERM => $proxy_pid;
+    kill TERM => $ssh_pid;
+}
