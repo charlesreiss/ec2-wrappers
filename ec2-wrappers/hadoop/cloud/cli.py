@@ -87,7 +87,7 @@ m1.xlarge, c1.medium, or c1.xlarge."),
 automatically shut down."),
   make_option("--client-cidr", metavar="CIDR", action="append",
     help="The CIDR of the client, which is used to allow access through the \
-firewall to the master node. (May be specified multiple times.)"),
+firewall to the main node. (May be specified multiple times.)"),
   make_option("--security-group", metavar="SECURITY_GROUP", action="append",
     default=[], help="Additional security groups within which the instances \
 should be run. (Amazon EC2 only.) (May be specified multiple times.)"),
@@ -138,9 +138,9 @@ def print_usage(script):
 where COMMAND and [OPTIONS] may be one of:
   list [CLUSTER]                      list all running Hadoop clusters
                                         or instances in CLUSTER
-  launch-master CLUSTER               launch or find a master in CLUSTER
-  launch-slaves CLUSTER NUM_SLAVES    launch NUM_SLAVES slaves in CLUSTER
-  launch-cluster CLUSTER (NUM_SLAVES| launch a master and NUM_SLAVES slaves or
+  launch-main CLUSTER               launch or find a main in CLUSTER
+  launch-subordinates CLUSTER NUM_SLAVES    launch NUM_SLAVES subordinates in CLUSTER
+  launch-cluster CLUSTER (NUM_SLAVES| launch a main and NUM_SLAVES subordinates or
     N ROLE [N ROLE ...])                N instances in ROLE in CLUSTER
   create-formatted-snapshot CLUSTER   create an empty, formatted snapshot of
     SIZE                                size SIZE GiB
@@ -148,16 +148,16 @@ where COMMAND and [OPTIONS] may be one of:
   create-storage CLUSTER ROLE         create volumes for NUM_INSTANCES instances
     NUM_INSTANCES SPEC_FILE             in ROLE for CLUSTER, using SPEC_FILE
   attach-storage ROLE                 attach storage volumes for ROLE to CLUSTER
-  login CLUSTER                       log in to the master in CLUSTER over SSH
+  login CLUSTER                       log in to the main in CLUSTER over SSH
   proxy CLUSTER                       start a SOCKS proxy on localhost into the
                                         CLUSTER
-  push CLUSTER FILE                   scp FILE to the master in CLUSTER
-  exec CLUSTER CMD                    execute CMD on the master in CLUSTER
+  push CLUSTER FILE                   scp FILE to the main in CLUSTER
+  exec CLUSTER CMD                    execute CMD on the main in CLUSTER
   terminate-cluster CLUSTER           terminate all instances in CLUSTER
   delete-cluster CLUSTER              delete the group information for CLUSTER
   delete-storage CLUSTER              delete all storage volumes for CLUSTER
-  update-slaves-file CLUSTER          update the slaves file on the CLUSTER
-                                        master
+  update-subordinates-file CLUSTER          update the subordinates file on the CLUSTER
+                                        main
 
 Use %(script)s COMMAND --help to see additional options for specific commands.
 """ % locals()
@@ -294,7 +294,7 @@ def main():
       (opt, args, service) = parse_options_and_config(command, BASIC_OPTIONS)
       service.list()
 
-  elif command == 'launch-master':
+  elif command == 'launch-main':
     (opt, args, service) = parse_options_and_config(command, LAUNCH_OPTIONS)
     check_launch_options_set(service.cluster, opt)
     config_dir = get_config_dir(opt)
@@ -306,14 +306,14 @@ def main():
                          opt.get('availability_zone'), opt.get('user_packages'),
                          opt.get('auto_shutdown'), opt.get('env'),
                          opt.get('security_group'))
-    service.launch_master(template, config_dir, opt.get('client_cidr'))
+    service.launch_main(template, config_dir, opt.get('client_cidr'))
 
-  elif command == 'launch-slaves':
+  elif command == 'launch-subordinates':
     (opt, args, service) = parse_options_and_config(command, LAUNCH_OPTIONS,
                                                     ("NUM_SLAVES",))
-    number_of_slaves = int(args[1])
+    number_of_subordinates = int(args[1])
     check_launch_options_set(service.cluster, opt)
-    template = InstanceTemplate((DATANODE, TASKTRACKER), number_of_slaves,
+    template = InstanceTemplate((DATANODE, TASKTRACKER), number_of_subordinates,
                          get_image_id(service.cluster, opt),
                          opt.get('instance_type'), opt.get('key_name'),
                          opt.get('public_key'), opt.get('private_key'),
@@ -321,7 +321,7 @@ def main():
                          opt.get('availability_zone'), opt.get('user_packages'),
                          opt.get('auto_shutdown'), opt.get('env'),
                          opt.get('security_group'))
-    service.launch_slaves(template)
+    service.launch_subordinates(template)
 
   elif command == 'launch-cluster':
     (opt, args, service) = parse_options_and_config(command, LAUNCH_OPTIONS,
@@ -331,9 +331,9 @@ def main():
     config_dir = get_config_dir(opt)
     instance_templates = []
     if len(args) == 2:
-      number_of_slaves = int(args[1])
+      number_of_subordinates = int(args[1])
       print_deprecation(sys.argv[0], 'launch-cluster %s 1 nn,snn,jt %s dn,tt' %
-                        (service.cluster.name, number_of_slaves))
+                        (service.cluster.name, number_of_subordinates))
       instance_templates = [
         InstanceTemplate((NAMENODE, SECONDARY_NAMENODE, JOBTRACKER), 1,
                          get_image_id(service.cluster, opt),
@@ -342,7 +342,7 @@ def main():
                          opt.get('availability_zone'), opt.get('user_packages'),
                          opt.get('auto_shutdown'), opt.get('env'),
                          opt.get('security_group')),
-        InstanceTemplate((DATANODE, TASKTRACKER), number_of_slaves,
+        InstanceTemplate((DATANODE, TASKTRACKER), number_of_subordinates,
                          get_image_id(service.cluster, opt),
                          opt.get('instance_type'), opt.get('key_name'),
                          opt.get('public_key'), opt.get('user_data_file'),
@@ -431,12 +431,12 @@ def main():
     (opt, args, service) = parse_options_and_config(command, FORCE_OPTIONS)
     service.delete_storage(opt["force"])
 
-  elif command == 'update-slaves-file':
+  elif command == 'update-subordinates-file':
     (opt, args, service) = parse_options_and_config(command, SSH_OPTIONS)
     check_options_set(opt, ['private_key'])
     ssh_options = xstr(opt.get('ssh_options'))
     config_dir = get_config_dir(opt)
-    service.update_slaves_file(config_dir, ssh_options, opt.get('private_key'))
+    service.update_subordinates_file(config_dir, ssh_options, opt.get('private_key'))
 
   else:
     print "Unrecognized command '%s'" % command
