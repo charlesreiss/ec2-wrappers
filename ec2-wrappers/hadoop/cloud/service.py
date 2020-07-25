@@ -36,7 +36,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-MASTER = "master"  # Deprecated.
+MASTER = "main"  # Deprecated.
 
 NAMENODE = "nn"
 SECONDARY_NAMENODE = "snn"
@@ -99,15 +99,15 @@ class Service(object):
     """
     raise Exception("Unimplemented")
   
-  def launch_master(self, instance_template, config_dir, client_cidr):
+  def launch_main(self, instance_template, config_dir, client_cidr):
     """
-    Launch a "master" instance.
+    Launch a "main" instance.
     """
     raise Exception("Unimplemented")
   
-  def launch_slaves(self, instance_template):
+  def launch_subordinates(self, instance_template):
     """
-    Launch "slave" instance.
+    Launch "subordinate" instance.
     """
     raise Exception("Unimplemented")
   
@@ -174,7 +174,7 @@ class Service(object):
   def execute(self, ssh_options, args):
     raise Exception("Unimplemented")
   
-  def update_slaves_file(self, config_dir, ssh_options, private_key):
+  def update_subordinates_file(self, config_dir, ssh_options, private_key):
     raise Exception("Unimplemented")
   
   def _prompt(self, prompt):
@@ -258,23 +258,23 @@ class HadoopService(Service):
   def list(self):
     self.cluster.print_status()
 
-  def launch_master(self, instance_template, config_dir, client_cidr):
+  def launch_main(self, instance_template, config_dir, client_cidr):
     if self.cluster.check_running(NAMENODE, 0) == False:
-      return  # don't proceed if another master is running
+      return  # don't proceed if another main is running
     self.launch_cluster((instance_template,), config_dir, client_cidr)
   
-  def launch_slaves(self, instance_template):
+  def launch_subordinates(self, instance_template):
     instances = self.cluster.check_running(NAMENODE, 1)
     if not instances:
       return
-    master = instances[0]
+    main = instances[0]
     for role in (NAMENODE, SECONDARY_NAMENODE, JOBTRACKER): 
       singleton_host_env = "%s_HOST=%s" % \
-              (self._sanitize_role_name(role), master.public_ip)
+              (self._sanitize_role_name(role), main.public_ip)
       instance_template.add_env_strings((singleton_host_env))
     self._launch_instances(instance_template)              
     self._attach_storage(instance_template.roles)
-    self._print_master_url()
+    self._print_main_url()
       
   def launch_cluster(self, instance_templates, config_dir, client_cidr, proxy_port=6666):
     number_of_tasktrackers = 0
@@ -292,70 +292,70 @@ class HadoopService(Service):
     except TimeoutException:
       print "Timeout while waiting for Hadoop to start. Please check logs on" +\
         " cluster."
-    self._print_master_url()
+    self._print_main_url()
     
   def login(self, ssh_options):
-    master = self._get_master()
-    if not master:
+    main = self._get_main()
+    if not main:
       sys.exit(1)
     logging.debug("About to run %s", 
         'ssh %s root@%s' % \
-                    (xstr(ssh_options), master.public_ip))
+                    (xstr(ssh_options), main.public_ip))
     subprocess.call('ssh %s root@%s' % \
-                    (xstr(ssh_options), master.public_ip),
+                    (xstr(ssh_options), main.public_ip),
                     shell=True)
     
   def proxy(self, ssh_options, proxy_port=6666):
-    master = self._get_master()
-    if not master:
+    main = self._get_main()
+    if not main:
       sys.exit(1)
     options = ('-o "ConnectTimeout 10" -o "ServerAliveInterval 60" ' \
             '-N -D localhost:%(proxy_port)s') % { 'proxy_port': proxy_port }
     process = subprocess.Popen('ssh %s %s root@%s' %
-      (xstr(ssh_options), options, master.public_ip),
+      (xstr(ssh_options), options, main.public_ip),
       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
       shell=True)
     print """export HADOOP_CLOUD_PROXY_PID=%s;
 echo Proxy pid %s, port %s;""" % (process.pid, process.pid, proxy_port)
     
   def push(self, ssh_options, file):
-    master = self._get_master()
-    if not master:
+    main = self._get_main()
+    if not main:
       sys.exit(1)
     subprocess.call('scp %s -r %s root@%s:' % (xstr(ssh_options),
-                                               file, master.public_ip),
+                                               file, main.public_ip),
                                                shell=True)
     
   def execute(self, ssh_options, args):
-    master = self._get_master()
-    if not master:
+    main = self._get_main()
+    if not main:
       sys.exit(1)
     subprocess.call("ssh %s root@%s '%s'" % (xstr(ssh_options),
-                                             master.public_ip,
+                                             main.public_ip,
                                              " ".join(args)), shell=True)
   
-  def update_slaves_file(self, config_dir, ssh_options, private_key):
+  def update_subordinates_file(self, config_dir, ssh_options, private_key):
     instances = self.cluster.check_running(NAMENODE, 1)
     if not instances:
       sys.exit(1)
-    master = instances[0]
-    slaves = self.cluster.get_instances_in_role(DATANODE, "running")
+    main = instances[0]
+    subordinates = self.cluster.get_instances_in_role(DATANODE, "running")
     cluster_dir = os.path.join(config_dir, self.cluster.name)
-    slaves_file = os.path.join(cluster_dir, 'slaves')
-    with open(slaves_file, 'w') as f:
-      for slave in slaves:
-        f.write(slave.public_ip + "\n")
+    subordinates_file = os.path.join(cluster_dir, 'subordinates')
+    with open(subordinates_file, 'w') as f:
+      for subordinate in subordinates:
+        f.write(subordinate.public_ip + "\n")
     subprocess.call('scp %s -r %s root@%s:/etc/hadoop/conf' % \
-                    (ssh_options, slaves_file, master.public_ip), shell=True)
+                    (ssh_options, subordinates_file, main.public_ip), shell=True)
     # Copy private key
     subprocess.call('scp %s -r %s root@%s:/root/.ssh/id_rsa' % \
-                    (ssh_options, private_key, master.public_ip), shell=True)
-    for slave in slaves:
+                    (ssh_options, private_key, main.public_ip), shell=True)
+    for subordinate in subordinates:
       subprocess.call('scp %s -r %s root@%s:/root/.ssh/id_rsa' % \
-                      (ssh_options, private_key, slave.public_ip), shell=True)
+                      (ssh_options, private_key, subordinate.public_ip), shell=True)
         
-  def _get_master(self):
-    # For split namenode/jobtracker, designate the namenode as the master
+  def _get_main(self):
+    # For split namenode/jobtracker, designate the namenode as the main
     return self._get_namenode()
 
   def _get_namenode(self):
@@ -403,7 +403,7 @@ echo Proxy pid %s, port %s;""" % (process.pid, process.pid, proxy_port)
     for client_cidr in client_cidrs:
       # Allow access to port 80 on namenode from client
       self.cluster.authorize_role(NAMENODE, 80, 80, client_cidr)
-      # Allow access to jobtracker UI on master from client
+      # Allow access to jobtracker UI on main from client
       # (so we can see when the cluster is ready)
       self.cluster.authorize_role(JOBTRACKER, 50030, 50030, client_cidr)
       self.cluster.authorize_role(NAMENODE, 50070, 50070, client_cidr)
@@ -525,7 +525,7 @@ echo Proxy pid %s, port %s;""" % (process.pid, process.pid, proxy_port)
       return int(m.group(1))
     return 0
 
-  def _print_master_url(self):
+  def _print_main_url(self):
     webserver = self._get_jobtracker()
     if not webserver:
       return
